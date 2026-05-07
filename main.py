@@ -16,7 +16,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="StudyAPI",
-    description="Turn any YouTube video into summaries, quizzes, and study notes instantly.",
+    description="Turn any YouTube video into transcripts and summaries instantly.",
     version="1.0.0",
     lifespan=lifespan,
     docs_url="/docs",

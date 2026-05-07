@@ -1,6 +1,6 @@
-# StudyAPI 📚
+# StudyAPI
 
-> Turn any YouTube video into summaries, quizzes, flashcards, and study notes — via a simple REST API.
+> Turn any YouTube video into transcripts and summaries via a simple REST API.
 
 ---
 
@@ -8,12 +8,10 @@
 
 | Method | Endpoint | Description | Free | Pro |
 |--------|----------|-------------|------|-----|
-| POST | `/v1/transcript` | Raw transcript + timestamps | ✅ | ✅ |
-| POST | `/v1/summary` | AI summary (4 styles) | ✅ | ✅ |
-| POST | `/v1/quiz` | Quiz questions (MCQ/T-F/SA) | 5 q | 20 q |
-| POST | `/v1/flashcards` | Anki-style flashcards | 10 | 30 |
-| POST | `/v1/notes` | Cornell study notes | ❌ | ✅ |
-| GET  | `/v1/usage` | Quota & usage stats | ✅ | ✅ |
+| POST | `/v1/transcript` | Raw transcript + optional timestamped segments | Yes | Yes |
+| POST | `/v1/summary` | Video summary in concise, detailed, bullet, or ELI5 style | Yes | Yes |
+| GET | `/` | Service metadata and available endpoints | Yes | Yes |
+| GET | `/health` | Health check | Yes | Yes |
 
 ---
 
@@ -32,17 +30,6 @@ curl -X POST https://api.studyapi.dev/v1/summary \
   -H "Content-Type: application/json" \
   -d '{"video_url": "https://youtube.com/watch?v=VIDEO_ID", "style": "bullet"}'
 
-# 3. Generate 10 MCQ questions
-curl -X POST https://api.studyapi.dev/v1/quiz \
-  -H "x-api-key: YOUR_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"video_url": "https://youtube.com/watch?v=VIDEO_ID", "num_questions": 10, "difficulty": "medium"}'
-
-# 4. Flashcards
-curl -X POST https://api.studyapi.dev/v1/flashcards \
-  -H "x-api-key: YOUR_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"video_url": "https://youtube.com/watch?v=VIDEO_ID", "num_cards": 15}'
 ```
 
 ---
@@ -52,7 +39,7 @@ curl -X POST https://api.studyapi.dev/v1/flashcards \
 ```bash
 git clone https://github.com/yourname/studyapi
 cd studyapi
-cp .env.example .env        # add your ANTHROPIC_API_KEY
+cp .env.example .env
 pip install -r requirements.txt
 uvicorn main:app --reload
 # → http://localhost:8000/docs
@@ -69,11 +56,11 @@ docker run -p 8000:8000 --env-file .env studyapi
 
 ## Pricing
 
-| Plan | Price | Calls/month | Quiz | Flashcards | Notes |
-|------|-------|-------------|------|------------|-------|
-| Free | $0 | 100 | 5 q | 10 cards | ❌ |
-| Pro | $19/mo | 5,000 | 20 q | 30 cards | ✅ |
-| Enterprise | Custom | Unlimited | ✅ | ✅ | ✅ |
+| Plan | Price | Calls/month | Transcript | Summary |
+|------|-------|-------------|------------|---------|
+| Free | $0 | 100 | Yes | Yes |
+| Pro | $19/mo | 5,000 | Yes | Yes |
+| Enterprise | Custom | Unlimited | Yes | Yes |
 
 ---
 
@@ -113,7 +100,7 @@ railway up
 railway domain
 ```
 
-Set env var `ANTHROPIC_API_KEY` in Railway dashboard. Done.
+Set env vars from `.env.example` in the Railway dashboard. For local summaries, use `SUMMARY_PROVIDER=local`.
 
 ---
 
@@ -128,11 +115,7 @@ FastAPI App (main.py)
   ├── RateLimitMiddleware → per-key per-minute throttle (swap for Redis)
   │
   ├── /v1/transcript  → services/youtube.py (youtube-transcript-api)
-  ├── /v1/summary     → services/llm.py (Claude claude-sonnet-4-20250514)
-  ├── /v1/quiz        → services/llm.py
-  ├── /v1/flashcards  → services/llm.py
-  ├── /v1/notes       → services/llm.py (Pro only)
-  └── /v1/usage       → models/db.py
+  └── /v1/summary     → services/llm.py (local extractive summaries or Gemini)
 ```
 
 ---
