@@ -137,13 +137,17 @@ class StockDataService:
             ticker = yf.Ticker(symbol)
             data = ticker.info
             
-            if not data:
-                return None
+            # Get current price from latest history if not in info
+            current_price = data.get("currentPrice")
+            if not current_price:
+                hist = ticker.history(period="1d")
+                if not hist.empty:
+                    current_price = float(hist["Close"].iloc[-1])
             
             return {
                 "index": index_name,
                 "symbol": symbol,
-                "current_price": data.get("currentPrice"),
+                "current_price": current_price,
                 "change": data.get("regularMarketChange"),
                 "change_percent": data.get("regularMarketChangePercent"),
                 "52_week_high": data.get("fiftyTwoWeekHigh"),
