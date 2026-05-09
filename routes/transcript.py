@@ -28,7 +28,7 @@ async def get_transcript(body: TranscriptRequest, request: Request):
         raise HTTPException(status_code=422, detail=str(e))
 
     try:
-        data = await fetch_transcript(video_id, language=body.language)
+        data = await fetch_transcript(body.video_url, language=body.language)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 

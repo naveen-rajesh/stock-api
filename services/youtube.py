@@ -1,112 +1,109 @@
 """
-Transcript Service
-Primary: RapidAPI youtube138 (works on cloud servers)
-Fallback: youtube-transcript-api (works locally)
+Transcript service.
+
+Uses youtube-transcript-api directly, with optional proxy configuration for
+cloud hosts such as Render where YouTube may block datacenter IPs.
 """
 
-import re
+import asyncio
 import os
-import httpx
-from youtube_transcript_api import YouTubeTranscriptApi, NoTranscriptFound, TranscriptsDisabled
+import re
+from typing import Dict
 
-RAPIDAPI_KEY = os.getenv("RAPIDAPI_KEY", "8bc5ce880cmsh84404c9d75b1223p1205b3jsnf9e7285c3c55")
+from youtube_transcript_api import YouTubeTranscriptApi
+from youtube_transcript_api.proxies import GenericProxyConfig
 
 
 def extract_video_id(url_or_id: str) -> str:
+    """Accept a YouTube URL or raw 11-character video ID."""
     patterns = [
-        r"(?:v=|youtu\.be/|embed/|shorts/)([a-zA-Z0-9_-]{11})",
-        r"^([a-zA-Z0-9_-]{11})$"
+        r"(?:v=|youtu\.be/|embed/|shorts/)([0-9A-Za-z_-]{11})",
+        r"^([0-9A-Za-z_-]{11})$",
     ]
-    for p in patterns:
-        m = re.search(p, url_or_id)
-        if m:
-            return m.group(1)
-    raise ValueError(f"Could not extract video ID from: {url_or_id}")
+
+    for pattern in patterns:
+        match = re.search(pattern, url_or_id)
+        if match:
+            return match.group(1)
+
+    raise ValueError("Invalid YouTube URL or video ID")
 
 
-async def fetch_transcript(video_id: str, language: str = "en") -> dict:
-    # Try RapidAPI first (works on cloud), fall back to direct
-    if RAPIDAPI_KEY:
-        try:
-            return await _fetch_via_rapidapi(video_id, language)
-        except Exception:
-            pass
+def _build_proxy_config() -> GenericProxyConfig | None:
+    proxy_url = os.getenv("YOUTUBE_PROXY_URL")
+    http_proxy = os.getenv("YOUTUBE_HTTP_PROXY")
+    https_proxy = os.getenv("YOUTUBE_HTTPS_PROXY")
 
-    # Fallback: direct fetch (works locally)
+    if proxy_url:
+        return GenericProxyConfig(http_url=proxy_url, https_url=proxy_url)
+    if http_proxy or https_proxy:
+        return GenericProxyConfig(http_url=http_proxy, https_url=https_proxy)
+    return None
+
+
+proxy_config = _build_proxy_config()
+ytt_api = YouTubeTranscriptApi(proxy_config=proxy_config) if proxy_config else YouTubeTranscriptApi()
+
+
+async def fetch_transcript(video_url: str, language: str = "en") -> Dict:
+    """
+    Fetch a YouTube transcript.
+
+    `video_url` may be a full YouTube URL or a raw video ID.
+    """
+    video_id = extract_video_id(video_url)
+    languages = [language] if language == "en" else [language, "en"]
+
     try:
-        segments = _fetch_direct(video_id, language)
+        transcript_data = await asyncio.to_thread(
+            ytt_api.fetch,
+            video_id,
+            languages=languages,
+        )
+        segments = [_normalize_segment(item) for item in transcript_data]
         return _build_response(video_id, segments, language)
-    except TranscriptsDisabled:
-        raise ValueError("Transcripts are disabled for this video.")
-    except NoTranscriptFound:
-        raise ValueError(f"No transcript found for video {video_id}.")
     except Exception as e:
+        print("TRANSCRIPT FETCH ERROR:", str(e))
         raise ValueError(f"Failed to fetch transcript: {str(e)}")
 
 
-async def _fetch_via_rapidapi(video_id: str, language: str) -> dict:
-    url = "https://youtube-transcript3.p.rapidapi.com/api/transcript"
-    headers = {
-        "x-rapidapi-host": "youtube-transcript3.p.rapidapi.com",
-        "x-rapidapi-key": RAPIDAPI_KEY,
-    }
-    async with httpx.AsyncClient(timeout=15) as client:
-        resp = await client.get(url, headers=headers, params={"videoId": video_id, "lang": language})
-        resp.raise_for_status()
-        data = resp.json()
-
-    # Response: { transcript: [ {text, start, duration} ] }
-    raw = data.get("transcript") or data.get("segments") or []
-    if not raw:
-        raise ValueError("Empty transcript from RapidAPI")
-
-    segments = [
-        {
+def _normalize_segment(item) -> dict:
+    if isinstance(item, dict):
+        return {
             "text": item.get("text", ""),
             "start": float(item.get("start", 0)),
             "duration": float(item.get("duration", 0)),
         }
-        for item in raw
-    ]
-    return _build_response(video_id, segments, language)
 
-
-def _fetch_direct(video_id: str, language: str) -> list[dict]:
-    languages = [language] if language == "en" else [language, "en"]
-    if hasattr(YouTubeTranscriptApi, "get_transcript"):
-        raw = YouTubeTranscriptApi.get_transcript(video_id, languages=languages)
-    else:
-        api = YouTubeTranscriptApi()
-        raw = api.fetch(video_id, languages=languages)
-    return [
-        {
-            "text": s.get("text", "") if isinstance(s, dict) else getattr(s, "text", ""),
-            "start": s.get("start", 0) if isinstance(s, dict) else getattr(s, "start", 0),
-            "duration": s.get("duration", 0) if isinstance(s, dict) else getattr(s, "duration", 0),
-        }
-        for s in raw
-    ]
+    return {
+        "text": getattr(item, "text", ""),
+        "start": float(getattr(item, "start", 0)),
+        "duration": float(getattr(item, "duration", 0)),
+    }
 
 
 def _build_response(video_id: str, segments: list[dict], language: str) -> dict:
-    full_text = " ".join(s["text"] for s in segments)
+    full_text = " ".join(segment["text"] for segment in segments)
     duration = segments[-1]["start"] + segments[-1].get("duration", 0) if segments else 0
-    formatted = [
+
+    formatted_segments = [
         {
-            "start": round(s["start"], 2),
-            "duration": round(s.get("duration", 0), 2),
-            "text": s["text"].strip(),
-            "timestamp": _seconds_to_timestamp(s["start"]),
+            "text": segment["text"].strip(),
+            "start": round(segment["start"], 2),
+            "duration": round(segment.get("duration", 0), 2),
+            "timestamp": _seconds_to_timestamp(segment["start"]),
         }
-        for s in segments
+        for segment in segments
     ]
+
     return {
         "video_id": video_id,
+        "language": language,
+        "segments": formatted_segments,
+        "transcript": full_text,
         "text": full_text,
-        "segments": formatted,
         "duration_seconds": round(duration),
         "duration_human": _seconds_to_timestamp(duration),
-        "language": language,
         "word_count": len(full_text.split()),
         "is_generated": False,
     }
@@ -116,4 +113,6 @@ def _seconds_to_timestamp(seconds: float) -> str:
     s = int(seconds)
     h, rem = divmod(s, 3600)
     m, sec = divmod(rem, 60)
-    return f"{h}:{m:02d}:{sec:02d}" if h else f"{m}:{sec:02d}"
+    if h:
+        return f"{h}:{m:02d}:{sec:02d}"
+    return f"{m}:{sec:02d}"

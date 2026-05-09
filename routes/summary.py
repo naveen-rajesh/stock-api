@@ -44,7 +44,7 @@ async def summarize(body: SummaryRequest, request: Request):
     else:
         try:
             video_id = extract_video_id(body.video_url)
-            data = await fetch_transcript(video_id, language=body.language)
+            data = await fetch_transcript(body.video_url, language=body.language)
             transcript_text = data["text"]
         except ValueError as e:
             raise HTTPException(status_code=404, detail=str(e))

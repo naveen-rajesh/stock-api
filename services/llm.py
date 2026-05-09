@@ -7,7 +7,6 @@ LLM Service — fully local, zero external API calls.
 """
 
 import re
-import random
 from collections import Counter
 
 STOPWORDS = {

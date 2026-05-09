@@ -49,8 +49,30 @@ uvicorn main:app --reload
 
 ```bash
 docker build -t studyapi .
-docker run -p 8000:8000 --env-file .env studyapi
+docker run -p 8080:8080 --env-file .env studyapi
 ```
+
+---
+
+## Deploying on Render
+
+1. Push the project to GitHub.
+2. Create a new Web Service in Render.
+3. Connect the repository.
+4. Render will pick up `render.yaml`.
+5. Add proxy variables if transcript fetching fails on cloud IPs.
+
+### Recommended Environment Variables
+
+- `YOUTUBE_PROXY_URL`
+- or `YOUTUBE_HTTP_PROXY` and `YOUTUBE_HTTPS_PROXY`
+
+### Why This Matters
+
+YouTube often blocks transcript requests coming from hosting-provider IPs.
+Using a proxy makes transcript fetching much more reliable on Render.
+
+You do not need an OpenAI, Gemini, Groq, or other external LLM key. The summarizer is fully local.
 
 ---
 
@@ -91,7 +113,7 @@ Errors:
 
 ---
 
-## Deploy to Railway (1-click)
+## Deploy to Railway
 
 ```bash
 railway login
@@ -100,7 +122,7 @@ railway up
 railway domain
 ```
 
-Set env vars from `.env.example` in the Railway dashboard. For local summaries, use `SUMMARY_PROVIDER=local`.
+Set env vars from `.env.example` in the Railway dashboard.
 
 ---
 
@@ -115,7 +137,7 @@ FastAPI App (main.py)
   ├── RateLimitMiddleware → per-key per-minute throttle (swap for Redis)
   │
   ├── /v1/transcript  → services/youtube.py (youtube-transcript-api)
-  └── /v1/summary     → services/llm.py (local extractive summaries or Gemini)
+  └── /v1/summary     → services/llm.py (local extractive summaries)
 ```
 
 ---
