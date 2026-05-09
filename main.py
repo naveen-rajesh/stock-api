@@ -3,21 +3,24 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 import time
+from dotenv import load_dotenv
 
-from routes import transcript, summary
+load_dotenv()
+
+from routes import stock, market
 from middleware.auth import APIKeyMiddleware
 from middleware.ratelimit import RateLimitMiddleware
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print("🚀 StudyAPI started")
+    print("🚀 Stock Market API started")
     yield
-    print("🛑 StudyAPI shutting down")
+    print("🛑 Stock Market API shutting down")
 
 app = FastAPI(
-    title="StudyAPI",
-    description="Turn any YouTube video into transcripts and summaries instantly.",
-    version="1.0.0",
+    title="Stock Market API",
+    description="Real-time stock prices, historical data, and market indices. Free, no API keys needed.",
+    version="2.0.0",
     lifespan=lifespan,
     docs_url="/docs",
     redoc_url="/redoc"
@@ -27,17 +30,30 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 app.add_middleware(RateLimitMiddleware)
 app.add_middleware(APIKeyMiddleware)
 
-app.include_router(transcript.router, prefix="/v1", tags=["Transcript"])
-app.include_router(summary.router,    prefix="/v1", tags=["Summary"])
+app.include_router(stock.router, tags=["Stock"])
+app.include_router(market.router, tags=["Market"])
 
 @app.get("/", tags=["Health"])
 async def root():
     return {
-        "service": "StudyAPI",
-        "version": "1.0.0",
+        "service": "Stock Market API",
+        "version": "2.0.0",
         "status": "operational",
+        "description": "Real-time stock data powered by yfinance (free, no API keys)",
         "docs": "/docs",
-        "endpoints": ["/v1/transcript", "/v1/summary"]
+        "endpoints": {
+            "stock": {
+                "GET /stock/{symbol}": "Current price and basic info",
+                "GET /stock/{symbol}/history": "OHLCV historical data",
+                "GET /stock/{symbol}/info": "Detailed fundamentals (P/E, market cap, EPS)"
+            },
+            "market": {
+                "GET /market/indices": "All major indices",
+                "GET /market/indices/{index}": "Specific index data",
+                "GET /market/movers": "Top gainers/losers",
+                "GET /market/search": "Search stocks by name"
+            }
+        }
     }
 
 @app.get("/health", tags=["Health"])
